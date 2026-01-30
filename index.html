@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Vector Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 280px;
+            background: rgba(15, 15, 25, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+
+        #controls.collapsed {
+            transform: translateX(calc(100% + 30px));
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: rgba(15, 15, 25, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            color: #a0a0ff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 99;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #toggle-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #toggle-btn:hover {
+            background: rgba(30, 30, 50, 0.95);
+            transform: scale(1.05);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(100, 100, 150, 0.2);
+        }
+
+        h1 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #a0a0ff;
+            letter-spacing: 1.5px;
+        }
+
+        #collapse-btn {
+            background: none;
+            border: none;
+            color: #808090;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            transition: color 0.2s;
+        }
+
+        #collapse-btn:hover {
+            color: #a0a0ff;
+        }
+
+        .control-group {
+            margin-bottom: 14px;
+        }
+
+        .control-group label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            margin-bottom: 6px;
+            color: #909099;
+        }
+
+        .control-group label .name {
+            cursor: help;
+            border-bottom: 1px dotted rgba(150, 150, 180, 0.4);
+        }
+
+        .control-group label span.val {
+            color: #8080ff;
+            font-weight: 600;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 0.75rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(40, 40, 60, 0.8);
+            appearance: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6060ff, #9060ff);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(100, 100, 255, 0.4);
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        input[type="color"] {
+            width: 100%;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: transparent;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 2px;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            border-radius: 4px;
+        }
+
+        .section-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #606070;
+            margin: 16px 0 10px 0;
+        }
+
+        .presets {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+
+        .preset-btn {
+            padding: 6px 8px;
+            border: 1px solid rgba(100, 100, 150, 0.25);
+            border-radius: 6px;
+            background: rgba(25, 25, 40, 0.6);
+            color: #a0a0b0;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .preset-btn:hover {
+            background: rgba(60, 60, 100, 0.5);
+            border-color: rgba(100, 100, 200, 0.4);
+            color: #c0c0ff;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        button.action-btn {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            border-radius: 8px;
+            background: linear-gradient(135deg, rgba(30, 30, 50, 0.8), rgba(40, 40, 70, 0.8));
+            color: #b0b0d0;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button.action-btn:hover {
+            background: linear-gradient(135deg, rgba(50, 50, 80, 0.9), rgba(60, 60, 100, 0.9));
+            border-color: rgba(100, 100, 200, 0.5);
+            color: #d0d0ff;
+        }
+
+        .kbd {
+            display: inline-block;
+            padding: 2px 5px;
+            font-size: 0.65rem;
+            font-family: 'SF Mono', monospace;
+            background: rgba(50, 50, 70, 0.5);
+            border-radius: 3px;
+            color: #707080;
+            margin-left: 6px;
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            font-size: 0.7rem;
+            color: rgba(130, 130, 160, 0.6);
+            z-index: 100;
+        }
+
+        #info span {
+            margin-right: 16px;
+        }
+
+        #stats {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 0.7rem;
+            color: rgba(130, 130, 160, 0.5);
+            font-family: 'SF Mono', monospace;
+            z-index: 100;
+        }
+
+        #share-toast {
+            position: fixed;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(60, 60, 100, 0.95);
+            color: #d0d0ff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 200;
+            pointer-events: none;
+        }
+
+        #share-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <button id="toggle-btn" title="Show controls (H)">☰</button>
+
+    <div id="controls">
+        <header>
+            <h1>VECTOR SPACE</h1>
+            <button id="collapse-btn" title="Hide panel">Hide <span class="kbd">H</span></button>
+        </header>
+
+        <div class="control-group">
+            <label>
+                <span class="name" title="Number of arrows in the 3D space">Vectors</span>
+                <span class="val" id="countVal">25</span>
+            </label>
+            <input type="range" id="vectorCount" min="1" max="100" value="25">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="name" title="Length of each arrow">Magnitude</span>
+                <span class="val" id="magVal">3.0</span>
+            </label>
+            <input type="range" id="magnitude" min="0.5" max="8" step="0.1" value="3">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="name" title="Push vectors up (+) or down (-)">Direction Bias</span>
+                <span class="val" id="dirVal">0.00</span>
+            </label>
+            <input type="range" id="direction" min="-1" max="1" step="0.05" value="0">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="name" title="How varied the X/Y/Z components are">Component Spread</span>
+                <span class="val" id="compVal">1.00</span>
+            </label>
+            <input type="range" id="components" min="0.1" max="2" step="0.05" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="name" title="Chaos level: low = orderly, high = scattered">Entropy</span>
+                <span class="val" id="entropyVal">0.50</span>
+            </label>
+            <input type="range" id="entropy" min="0" max="1" step="0.01" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="name" title="Base color for arrows">Color</span>
+            </label>
+            <input type="color" id="arrowColor" value="#6080ff">
+        </div>
+
+        <div class="section-label">Presets</div>
+        <div class="presets">
+            <button class="preset-btn" data-preset="flow">Flow</button>
+            <button class="preset-btn" data-preset="explosion">Burst</button>
+            <button class="preset-btn" data-preset="starfield">Stars</button>
+            <button class="preset-btn" data-preset="rain">Rain</button>
+            <button class="preset-btn" data-preset="chaos">Chaos</button>
+            <button class="preset-btn" data-preset="minimal">Minimal</button>
+        </div>
+
+        <div class="btn-group">
+            <button class="action-btn" id="randomize">Randomize <span class="kbd">Space</span></button>
+            <button class="action-btn" id="reset">Reset <span class="kbd">R</span></button>
+        </div>
+        <div class="btn-group">
+            <button class="action-btn" id="share">Copy Share Link <span class="kbd">S</span></button>
+        </div>
+    </div>
+
+    <div id="info">
+        <span>Drag to rotate</span>
+        <span>Scroll to zoom</span>
+        <span class="kbd">H</span> toggle panel
+    </div>
+
+    <div id="stats"></div>
+    <div id="share-toast">Link copied to clipboard!</div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="vectors.js"></script>
+</body>
+</html>
