@@ -4,46 +4,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-// Simple Perlin noise implementation
-class PerlinNoise {
-    constructor() {
-        this.permutation = [];
-        for (let i = 0; i < 256; i++) this.permutation[i] = i;
-        for (let i = 255; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
-        }
-        this.permutation = [...this.permutation, ...this.permutation];
-    }
-
-    fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-    lerp(a, b, t) { return a + t * (b - a); }
-    grad(hash, x, y, z) {
-        const h = hash & 15;
-        const u = h < 8 ? x : y;
-        const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
-        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-    }
-
-    noise(x, y, z) {
-        const X = Math.floor(x) & 255;
-        const Y = Math.floor(y) & 255;
-        const Z = Math.floor(z) & 255;
-        x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
-        const u = this.fade(x), v = this.fade(y), w = this.fade(z);
-        const p = this.permutation;
-        const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z;
-        const B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
-        return this.lerp(
-            this.lerp(
-                this.lerp(this.grad(p[AA], x, y, z), this.grad(p[BA], x - 1, y, z), u),
-                this.lerp(this.grad(p[AB], x, y - 1, z), this.grad(p[BB], x - 1, y - 1, z), u), v),
-            this.lerp(
-                this.lerp(this.grad(p[AA + 1], x, y, z - 1), this.grad(p[BA + 1], x - 1, y, z - 1), u),
-                this.lerp(this.grad(p[AB + 1], x, y - 1, z - 1), this.grad(p[BB + 1], x - 1, y - 1, z - 1), u), v), w);
-    }
-}
-
 const PRESETS = {
     flow: { count: 40, magnitude: 4, direction: 0.6, components: 0.3, entropy: 0.1, color: '#40c0ff' },
     explosion: { count: 60, magnitude: 5, direction: 0, components: 2, entropy: 0.9, color: '#ff6040' },
@@ -59,9 +19,6 @@ class VectorVisualizer {
         this.arrows = [];
         this.panelCollapsed = false;
         this.bloomEnabled = false;
-        this.flowEnabled = false;
-        this.time = 0;
-        this.perlin = new PerlinNoise();
 
         this.params = {
             count: 25,
@@ -83,8 +40,8 @@ class VectorVisualizer {
 
     init() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x0a0a0f);
-        this.scene.fog = new THREE.Fog(0x0a0a0f, 25, 60);
+        this.scene.background = new THREE.Color(0x050508);
+        this.scene.fog = new THREE.Fog(0x050508, 25, 60);
 
         this.camera = new THREE.PerspectiveCamera(
             60,
@@ -98,7 +55,7 @@ class VectorVisualizer {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.toneMapping = THREE.ReinhardToneMapping;
-        this.renderer.toneMappingExposure = 1.5;
+        this.renderer.toneMappingExposure = 1;
         document.getElementById('canvas-container').appendChild(this.renderer.domElement);
 
         this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -107,14 +64,14 @@ class VectorVisualizer {
         this.orbitControls.minDistance = 5;
         this.orbitControls.maxDistance = 50;
 
-        const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.4);
         this.scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(10, 20, 10);
         this.scene.add(directionalLight);
 
-        const gridHelper = new THREE.GridHelper(20, 20, 0x2a2a4e, 0x1a1a2e);
+        const gridHelper = new THREE.GridHelper(20, 20, 0x1a1a2e, 0x101018);
         this.scene.add(gridHelper);
 
         const axesHelper = new THREE.AxesHelper(10);
@@ -136,11 +93,12 @@ class VectorVisualizer {
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
 
+        // Bloom settings: lower threshold = more things glow, higher strength = brighter glow
         this.bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            1.5,   // strength
-            0.4,   // radius
-            0.85   // threshold
+            2.0,   // strength - cranked up for visible effect
+            0.5,   // radius - how far the glow spreads
+            0.1    // threshold - lowered so arrows trigger it
         );
         this.bloomPass.enabled = false;
         this.composer.addPass(this.bloomPass);
@@ -168,17 +126,10 @@ class VectorVisualizer {
             this.updateURL();
         });
 
-        // Effect toggles
+        // Bloom toggle
         document.getElementById('bloomToggle').addEventListener('change', (e) => {
             this.bloomEnabled = e.target.checked;
             this.bloomPass.enabled = this.bloomEnabled;
-        });
-
-        document.getElementById('flowToggle').addEventListener('change', (e) => {
-            this.flowEnabled = e.target.checked;
-            if (this.flowEnabled) {
-                this.storeOriginalDirections();
-            }
         });
 
         // Presets
@@ -226,9 +177,6 @@ class VectorVisualizer {
                     break;
                 case 'b':
                     document.getElementById('bloomToggle').click();
-                    break;
-                case 'f':
-                    document.getElementById('flowToggle').click();
                     break;
             }
         });
@@ -297,12 +245,6 @@ class VectorVisualizer {
         });
     }
 
-    storeOriginalDirections() {
-        this.vectors.forEach(v => {
-            v.originalDirection = v.direction.clone();
-        });
-    }
-
     generateVectors() {
         this.arrows.forEach(arrow => this.scene.remove(arrow));
         this.arrows = [];
@@ -336,7 +278,6 @@ class VectorVisualizer {
             this.vectors.push({
                 origin,
                 direction: direction.clone(),
-                originalDirection: direction.clone(),
                 magnitude: mag,
                 baseColor: arrowColor
             });
@@ -381,8 +322,9 @@ class VectorVisualizer {
 
         const hueVariation = this.params.entropy * 0.15;
         hsl.h += (Math.random() - 0.5) * hueVariation;
-        hsl.l = Math.max(0.3, Math.min(0.7, hsl.l + (Math.random() - 0.5) * 0.1));
-        hsl.s = Math.min(1, hsl.s + 0.1);
+        // Boost lightness for bloom visibility
+        hsl.l = Math.max(0.5, Math.min(0.8, hsl.l + (Math.random() - 0.5) * 0.1 + 0.2));
+        hsl.s = Math.min(1, hsl.s + 0.2);
 
         const variedColor = new THREE.Color();
         variedColor.setHSL(hsl.h, hsl.s, hsl.l);
@@ -404,49 +346,6 @@ class VectorVisualizer {
             `${this.params.count} vectors | avg mag: ${avgMag.toFixed(1)}`;
     }
 
-    updateFlow() {
-        if (!this.flowEnabled) return;
-
-        const flowSpeed = 0.3;
-        const flowScale = 0.15;
-
-        this.vectors.forEach((v, i) => {
-            const arrow = this.arrows[i];
-
-            // Use Perlin noise to modulate direction
-            const noiseX = this.perlin.noise(
-                v.origin.x * flowScale + this.time * flowSpeed,
-                v.origin.y * flowScale,
-                v.origin.z * flowScale
-            );
-            const noiseY = this.perlin.noise(
-                v.origin.x * flowScale,
-                v.origin.y * flowScale + this.time * flowSpeed,
-                v.origin.z * flowScale + 100
-            );
-            const noiseZ = this.perlin.noise(
-                v.origin.x * flowScale + 200,
-                v.origin.y * flowScale,
-                v.origin.z * flowScale + this.time * flowSpeed
-            );
-
-            // Blend original direction with noise
-            const blendFactor = 0.4;
-            const newDir = new THREE.Vector3(
-                v.originalDirection.x + noiseX * blendFactor,
-                v.originalDirection.y + noiseY * blendFactor,
-                v.originalDirection.z + noiseZ * blendFactor
-            ).normalize();
-
-            // Update arrow direction
-            arrow.setDirection(newDir);
-
-            // Subtle magnitude pulsing
-            const pulseMag = v.magnitude * (1 + Math.sin(this.time * 2 + i * 0.5) * 0.1);
-            arrow.setLength(pulseMag, pulseMag * 0.2, pulseMag * 0.1);
-        });
-    }
-
     randomizeAll() {
         this.params.count = Math.floor(Math.random() * 70 + 10);
         this.params.magnitude = Math.random() * 5 + 1;
@@ -456,7 +355,7 @@ class VectorVisualizer {
 
         const hue = Math.random();
         const color = new THREE.Color();
-        color.setHSL(hue, 0.7, 0.5);
+        color.setHSL(hue, 0.8, 0.55);
         this.params.color = '#' + color.getHexString();
 
         this.updateUIFromParams();
@@ -474,11 +373,9 @@ class VectorVisualizer {
             color: '#6080ff'
         };
 
-        // Reset toggles
+        // Reset bloom toggle
         document.getElementById('bloomToggle').checked = false;
-        document.getElementById('flowToggle').checked = false;
         this.bloomEnabled = false;
-        this.flowEnabled = false;
         this.bloomPass.enabled = false;
 
         this.updateUIFromParams();
@@ -498,13 +395,7 @@ class VectorVisualizer {
 
     animate() {
         requestAnimationFrame(() => this.animate());
-
-        this.time += 0.016; // ~60fps time step
         this.orbitControls.update();
-
-        if (this.flowEnabled) {
-            this.updateFlow();
-        }
 
         if (this.bloomEnabled) {
             this.composer.render();
